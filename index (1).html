@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El Impostor</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .container {
+    width: 100%;
+    max-width: 420px;
+  }
+  .card {
+    background: #232843;
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 4px;
+    color: #ff4757;
+    letter-spacing: 1px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #9a9cc0;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: #b0b3d6;
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input, select {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 2px solid #3a3f6b;
+    background: #1a1e3a;
+    color: #fff;
+    font-size: 16px;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: #ff4757; }
+  button {
+    width: 100%;
+    padding: 16px;
+    border-radius: 12px;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 20px;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: #ff4757; color: #fff; }
+  .btn-secondary { background: #3a3f6b; color: #fff; }
+  .btn-ghost { background: transparent; color: #9a9cc0; border: 2px solid #3a3f6b; }
+  .divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 24px 0;
+    color: #6a6e96;
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #3a3f6b;
+  }
+  .divider span { padding: 0 12px; }
+  .hidden { display: none !important; }
+  .room-code {
+    text-align: center;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    color: #ffd166;
+    margin: 16px 0;
+    padding: 16px;
+    background: #1a1e3a;
+    border-radius: 14px;
+  }
+  .player-list {
+    list-style: none;
+    margin: 16px 0;
+  }
+  .player-list li {
+    background: #1a1e3a;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .badge {
+    font-size: 11px;
+    background: #ff4757;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .info-text {
+    text-align: center;
+    color: #9a9cc0;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  .role-card {
+    text-align: center;
+    padding: 30px 20px;
+  }
+  .role-tag {
+    display: inline-block;
+    padding: 8px 20px;
+    border-radius: 30px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .role-normal { background: #2ecc71; color: #fff; }
+  .role-impostor { background: #ff4757; color: #fff; }
+  .word-display {
+    font-size: 32px;
+    font-weight: 800;
+    margin: 16px 0;
+    word-break: break-word;
+  }
+  .word-label {
+    color: #9a9cc0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .error-msg {
+    color: #ff6b6b;
+    font-size: 13px;
+    text-align: center;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+  .stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .stepper button {
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    border-radius: 50%;
+    font-size: 20px;
+    padding: 0;
+  }
+  .stepper .count {
+    font-size: 22px;
+    font-weight: 700;
+    min-width: 30px;
+    text-align: center;
+  }
+  .loader {
+    border: 3px solid #3a3f6b;
+    border-top: 3px solid #ff4757;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    animation: spin 0.8s linear infinite;
+    margin: 16px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .small-link {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    color: #6a6e96;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+
+    <!-- PANTALLA 1: INICIO -->
+    <div id="screen-home">
+      <h1>🎭 EL IMPOSTOR</h1>
+      <p class="subtitle">El juego de la palabra secreta</p>
+
+      <label for="player-name">Tu nombre</label>
+      <input type="text" id="player-name" placeholder="Ej: Camila" maxlength="20">
+
+      <button class="btn-primary" id="btn-create-room">Crear sala</button>
+
+      <div class="divider"><span>o</span></div>
+
+      <label for="room-code-input">Código de sala</label>
+      <input type="text" id="room-code-input" placeholder="Ej: AB12" maxlength="6" style="text-transform:uppercase">
+      <button class="btn-secondary" id="btn-join-room">Unirse a sala</button>
+
+      <p class="error-msg" id="home-error"></p>
+    </div>
+
+    <!-- PANTALLA 2: LOBBY / CONFIGURACIÓN -->
+    <div id="screen-lobby" class="hidden">
+      <h1 style="font-size:22px;">Sala de espera</h1>
+      <div class="room-code" id="lobby-room-code">----</div>
+
+      <p class="info-text">Comparte este código con tus amigos</p>
+
+      <ul class="player-list" id="lobby-player-list"></ul>
+
+      <div id="host-config" class="hidden">
+        <label for="country-select">País / dialecto</label>
+        <select id="country-select"></select>
+
+        <label>Cantidad de impostores</label>
+        <div class="stepper">
+          <button class="btn-ghost" id="impostor-minus">−</button>
+          <span class="count" id="impostor-count">1</span>
+          <button class="btn-ghost" id="impostor-plus">+</button>
+        </div>
+
+        <button class="btn-primary" id="btn-start-game">Iniciar partida</button>
+      </div>
+
+      <p class="info-text" id="waiting-host-msg">Esperando que el anfitrión inicie la partida...</p>
+
+      <p class="small-link" id="btn-leave-room">Salir de la sala</p>
+    </div>
+
+    <!-- PANTALLA 3: ROL ASIGNADO -->
+    <div id="screen-role" class="hidden">
+      <div class="role-card">
+        <div id="role-tag" class="role-tag">CARGANDO...</div>
+
+        <div id="role-content">
+          <div class="loader"></div>
+        </div>
+      </div>
+
+      <button class="btn-secondary" id="btn-end-round">Terminar ronda</button>
+      <p class="small-link" id="btn-leave-room-2">Salir de la sala</p>
+    </div>
+
+  </div>
+</div>
+
+<script src="words.js"></script>
+<script>
+// ===================== CONFIGURACIÓN FIREBASE =====================
+const firebaseConfig = {
+  apiKey: "AIzaSyCJxhwIIto2LoyKLzntjUMJIY1_cPkSzO4",
+  authDomain: "the-impostor-f63cb.firebaseapp.com",
+  databaseURL: "https://the-impostor-f63cb-default-rtdb.firebaseio.com",
+  projectId: "the-impostor-f63cb",
+  storageBucket: "the-impostor-f63cb.firebasestorage.app",
+  messagingSenderId: "275438053860",
+  appId: "1:275438053860:web:53a2441e89c506b85c7ff1"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ===================== ESTADO LOCAL =====================
+let myPlayerId = null;
+let myRoomCode = null;
+let isHost = false;
+let impostorCount = 1;
+let roomListenerRef = null;
+
+// ===================== UTILIDADES =====================
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin caracteres ambiguos
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function generatePlayerId() {
+  return 'p_' + Math.random().toString(36).substr(2, 9);
+}
+
+function showScreen(id) {
+  document.querySelectorAll('[id^="screen-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function setError(elId, msg) {
+  document.getElementById(elId).textContent = msg;
+  if (msg) setTimeout(() => { document.getElementById(elId).textContent = ''; }, 4000);
+}
+
+// Llenar el select de países desde words.js
+function populateCountrySelect() {
+  const select = document.getElementById('country-select');
+  select.innerHTML = '';
+  Object.keys(WORD_BANKS).forEach(key => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = COUNTRY_NAMES[key] || key;
+    select.appendChild(opt);
+  });
+}
+populateCountrySelect();
+
+// ===================== CREAR SALA =====================
+document.getElementById('btn-create-room').addEventListener('click', async () => {
+  const name = document.getElementById('player-name').value.trim();
+  if (!name) {
+    setError('home-error', 'Escribe tu nombre primero');
+    return;
+  }
+
+  myPlayerId = generatePlayerId();
+  let code = generateRoomCode();
+
+  // Verificar que el código no exista (muy improbable, pero por seguridad)
+  let exists = (await db.ref('rooms/' + code).get()).exists();
+  let attempts = 0;
+  while (exists && attempts < 5) {
+    code = generateRoomCode();
+    exists = (await db.ref('rooms/' + code).get()).exists();
+    attempts++;
+  }
+
+  myRoomCode = code;
+  isHost = true;
+
+  await db.ref('rooms/' + code).set({
+    status: 'lobby',
+    hostId: myPlayerId,
+    country: 'chile',
+    impostorCount: 1,
+    createdAt: Date.now(),
+    players: {
+      [myPlayerId]: { name: name, isHost: true }
+    }
+  });
+
+  enterLobby(code);
+});
+
+// ===================== UNIRSE A SALA =====================
+document.getElementById('btn-join-room').addEventListener('click', async () => {
+  const name = document.getElementById('player-name').value.trim();
+  const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+
+  if (!name) {
+    setError('home-error', 'Escribe tu nombre primero');
+    return;
+  }
+  if (!code) {
+    setError('home-error', 'Escribe el código de la sala');
+    return;
+  }
+
+  const snap = await db.ref('rooms/' + code).get();
+  if (!snap.exists()) {
+    setError('home-error', 'Esa sala no existe');
+    return;
+  }
+
+  const roomData = snap.val();
+  if (roomData.status !== 'lobby') {
+    setError('home-error', 'Esa partida ya comenzó');
+    return;
+  }
+
+  myPlayerId = generatePlayerId();
+  myRoomCode = code;
+  isHost = false;
+
+  await db.ref('rooms/' + code + '/players/' + myPlayerId).set({
+    name: name,
+    isHost: false
+  });
+
+  enterLobby(code);
+});
+
+// ===================== LOBBY =====================
+function enterLobby(code) {
+  document.getElementById('lobby-room-code').textContent = code;
+  showScreen('screen-lobby');
+
+  if (isHost) {
+    document.getElementById('host-config').classList.remove('hidden');
+    document.getElementById('waiting-host-msg').classList.add('hidden');
+  } else {
+    document.getElementById('host-config').classList.add('hidden');
+    document.getElementById('waiting-host-msg').classList.remove('hidden');
+  }
+
+  // Escuchar cambios en la sala en tiempo real
+  roomListenerRef = db.ref('rooms/' + code);
+  roomListenerRef.on('value', (snap) => {
+    const data = snap.val();
+    if (!data) {
+      // La sala fue eliminada
+      alert('La sala fue cerrada.');
+      goHome();
+      return;
+    }
+
+    renderPlayerList(data.players || {});
+
+    if (data.status === 'playing') {
+      showMyRole(data);
+    } else if (data.status === 'lobby') {
+      showScreen('screen-lobby');
+    }
+  });
+}
+
+function renderPlayerList(players) {
+  const list = document.getElementById('lobby-player-list');
+  list.innerHTML = '';
+  Object.entries(players).forEach(([pid, p]) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${p.name}</span>` + (p.isHost ? '<span class="badge">ANFITRIÓN</span>' : '');
+    list.appendChild(li);
+  });
+}
+
+// Stepper de impostores
+document.getElementById('impostor-plus').addEventListener('click', () => {
+  impostorCount = Math.min(impostorCount + 1, 5);
+  document.getElementById('impostor-count').textContent = impostorCount;
+});
+document.getElementById('impostor-minus').addEventListener('click', () => {
+  impostorCount = Math.max(impostorCount - 1, 1);
+  document.getElementById('impostor-count').textContent = impostorCount;
+});
+
+// ===================== INICIAR PARTIDA (solo host) =====================
+document.getElementById('btn-start-game').addEventListener('click', async () => {
+  const country = document.getElementById('country-select').value;
+  const snap = await db.ref('rooms/' + myRoomCode + '/players').get();
+  const players = snap.val() || {};
+  const playerIds = Object.keys(players);
+
+  if (playerIds.length < 3) {
+    alert('Necesitas al menos 3 jugadores para empezar.');
+    return;
+  }
+  if (impostorCount >= playerIds.length) {
+    alert('Demasiados impostores para esa cantidad de jugadores.');
+    return;
+  }
+
+  // Elegir palabra aleatoria del país
+  const bank = WORD_BANKS[country];
+  const wordPair = bank[Math.floor(Math.random() * bank.length)];
+
+  // Elegir impostores al azar
+  const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
+  const impostorIds = shuffled.slice(0, impostorCount);
+
+  // Asignar roles
+  const roles = {};
+  playerIds.forEach(pid => {
+    roles[pid] = impostorIds.includes(pid) ? 'impostor' : 'normal';
+  });
+
+  await db.ref('rooms/' + myRoomCode).update({
+    status: 'playing',
+    country: country,
+    impostorCount: impostorCount,
+    currentWord: wordPair.palabra,
+    currentClue: wordPair.pista,
+    roles: roles
+  });
+});
+
+// ===================== MOSTRAR ROL =====================
+function showMyRole(data) {
+  showScreen('screen-role');
+  const myRole = (data.roles || {})[myPlayerId];
+  const tag = document.getElementById('role-tag');
+  const content = document.getElementById('role-content');
+
+  if (myRole === 'impostor') {
+    tag.textContent = 'ERES IMPOSTOR';
+    tag.className = 'role-tag role-impostor';
+    content.innerHTML = `
+      <p class="word-label">Tu pista es:</p>
+      <div class="word-display">${data.currentClue}</div>
+      <p class="info-text">No conoces la palabra real. ¡Disimula!</p>
+    `;
+  } else {
+    tag.textContent = 'JUGADOR NORMAL';
+    tag.className = 'role-tag role-normal';
+    content.innerHTML = `
+      <p class="word-label">La palabra es:</p>
+      <div class="word-display">${data.currentWord}</div>
+      <p class="info-text">Da pistas sin decir la palabra directamente.</p>
+    `;
+  }
+}
+
+// ===================== TERMINAR RONDA (volver al lobby) =====================
+document.getElementById('btn-end-round').addEventListener('click', async () => {
+  if (!isHost) {
+    alert('Solo el anfitrión puede terminar la ronda.');
+    return;
+  }
+  await db.ref('rooms/' + myRoomCode).update({
+    status: 'lobby',
+    currentWord: null,
+    currentClue: null,
+    roles: null
+  });
+});
+
+// ===================== SALIR DE LA SALA =====================
+async function leaveRoom() {
+  if (myRoomCode && myPlayerId) {
+    if (roomListenerRef) roomListenerRef.off();
+
+    if (isHost) {
+      // Si el host se va, se elimina la sala completa
+      await db.ref('rooms/' + myRoomCode).remove();
+    } else {
+      await db.ref('rooms/' + myRoomCode + '/players/' + myPlayerId).remove();
+    }
+  }
+  goHome();
+}
+
+document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
+document.getElementById('btn-leave-room-2').addEventListener('click', leaveRoom);
+
+function goHome() {
+  myPlayerId = null;
+  myRoomCode = null;
+  isHost = false;
+  impostorCount = 1;
+  document.getElementById('impostor-count').textContent = '1';
+  document.getElementById('room-code-input').value = '';
+  showScreen('screen-home');
+}
+
+// Convertir a mayúsculas mientras se escribe el código
+document.getElementById('room-code-input').addEventListener('input', (e) => {
+  e.target.value = e.target.value.toUpperCase();
+});
+</script>
+
+</body>
+</html>
