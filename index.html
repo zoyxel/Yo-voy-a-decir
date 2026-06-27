@@ -198,6 +198,32 @@
     cursor: pointer;
     text-decoration: underline;
   }
+  .toggle-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .toggle-group-3 .toggle-btn {
+    font-size: 13px;
+    padding: 12px 6px;
+  }
+  .toggle-btn {
+    flex: 1;
+    margin: 0;
+    padding: 12px;
+    border-radius: 10px;
+    border: 2px solid #3a3f6b;
+    background: #1a1e3a;
+    color: #9a9cc0;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toggle-btn.active {
+    background: #ff4757;
+    border-color: #ff4757;
+    color: #fff;
+  }
 </style>
 </head>
 <body>
@@ -234,8 +260,23 @@
       <ul class="player-list" id="lobby-player-list"></ul>
 
       <div id="host-config" class="hidden">
-        <label for="country-select">País / dialecto</label>
-        <select id="country-select"></select>
+        <label>Modo de juego</label>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="mode-general" data-mode="general">General</button>
+          <button class="toggle-btn" id="mode-dialecto" data-mode="dialecto">Dialecto</button>
+        </div>
+
+        <div id="country-select-wrap" class="hidden">
+          <label for="country-select">País / dialecto</label>
+          <select id="country-select"></select>
+        </div>
+
+        <label>Dificultad de la pista</label>
+        <div class="toggle-group toggle-group-3">
+          <button class="toggle-btn active" id="diff-facil" data-diff="facil">Fácil</button>
+          <button class="toggle-btn" id="diff-medio" data-diff="medio">Medio</button>
+          <button class="toggle-btn" id="diff-dificil" data-diff="dificil">Difícil</button>
+        </div>
 
         <label>Cantidad de impostores</label>
         <div class="stepper">
@@ -291,6 +332,8 @@ let myRoomCode = null;
 let isHost = false;
 let impostorCount = 1;
 let roomListenerRef = null;
+let selectedMode = 'general'; // 'general' o 'dialecto'
+let selectedDifficulty = 'facil'; // 'facil', 'medio' o 'dificil'
 
 // ===================== UTILIDADES =====================
 function generateRoomCode() {
@@ -328,6 +371,31 @@ function populateCountrySelect() {
   });
 }
 populateCountrySelect();
+
+// Toggle: Modo de juego (General / Dialecto)
+document.getElementById('mode-general').addEventListener('click', () => {
+  selectedMode = 'general';
+  document.getElementById('mode-general').classList.add('active');
+  document.getElementById('mode-dialecto').classList.remove('active');
+  document.getElementById('country-select-wrap').classList.add('hidden');
+});
+document.getElementById('mode-dialecto').addEventListener('click', () => {
+  selectedMode = 'dialecto';
+  document.getElementById('mode-dialecto').classList.add('active');
+  document.getElementById('mode-general').classList.remove('active');
+  document.getElementById('country-select-wrap').classList.remove('hidden');
+});
+
+// Toggle: Dificultad de la pista
+function setDifficulty(level) {
+  selectedDifficulty = level;
+  ['facil', 'medio', 'dificil'].forEach(l => {
+    document.getElementById('diff-' + l).classList.toggle('active', l === level);
+  });
+}
+document.getElementById('diff-facil').addEventListener('click', () => setDifficulty('facil'));
+document.getElementById('diff-medio').addEventListener('click', () => setDifficulty('medio'));
+document.getElementById('diff-dificil').addEventListener('click', () => setDifficulty('dificil'));
 
 // ===================== CREAR SALA =====================
 document.getElementById('btn-create-room').addEventListener('click', async () => {
@@ -474,9 +542,10 @@ document.getElementById('btn-start-game').addEventListener('click', async () => 
     return;
   }
 
-  // Elegir palabra aleatoria del país
-  const bank = WORD_BANKS[country];
-  const wordPair = bank[Math.floor(Math.random() * bank.length)];
+  // Elegir banco según el modo: general (neutro) o dialecto (por país)
+  const bank = selectedMode === 'general' ? WORD_BANK_GENERAL : WORD_BANKS[country];
+  const wordEntry = bank[Math.floor(Math.random() * bank.length)];
+  const clueForDifficulty = wordEntry.pistas[selectedDifficulty];
 
   // Elegir impostores al azar
   const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
@@ -490,10 +559,12 @@ document.getElementById('btn-start-game').addEventListener('click', async () => 
 
   await db.ref('rooms/' + myRoomCode).update({
     status: 'playing',
-    country: country,
+    mode: selectedMode,
+    country: selectedMode === 'dialecto' ? country : null,
+    difficulty: selectedDifficulty,
     impostorCount: impostorCount,
-    currentWord: wordPair.palabra,
-    currentClue: wordPair.pista,
+    currentWord: wordEntry.palabra,
+    currentClue: clueForDifficulty,
     roles: roles
   });
 });
@@ -505,10 +576,17 @@ function showMyRole(data) {
   const tag = document.getElementById('role-tag');
   const content = document.getElementById('role-content');
 
+  const modeLabel = data.mode === 'dialecto'
+    ? (COUNTRY_NAMES[data.country] || data.country)
+    : 'General';
+  const diffLabel = DIFFICULTY_NAMES[data.difficulty] || '';
+  const contextLine = `<p class="info-text" style="margin-top:0;opacity:0.7;">${modeLabel} · Dificultad: ${diffLabel}</p>`;
+
   if (myRole === 'impostor') {
     tag.textContent = 'ERES IMPOSTOR';
     tag.className = 'role-tag role-impostor';
     content.innerHTML = `
+      ${contextLine}
       <p class="word-label">Tu pista es:</p>
       <div class="word-display">${data.currentClue}</div>
       <p class="info-text">No conoces la palabra real. ¡Disimula!</p>
@@ -517,6 +595,7 @@ function showMyRole(data) {
     tag.textContent = 'JUGADOR NORMAL';
     tag.className = 'role-tag role-normal';
     content.innerHTML = `
+      ${contextLine}
       <p class="word-label">La palabra es:</p>
       <div class="word-display">${data.currentWord}</div>
       <p class="info-text">Da pistas sin decir la palabra directamente.</p>
@@ -561,7 +640,13 @@ function goHome() {
   myRoomCode = null;
   isHost = false;
   impostorCount = 1;
+  selectedMode = 'general';
+  selectedDifficulty = 'facil';
   document.getElementById('impostor-count').textContent = '1';
+  document.getElementById('mode-general').classList.add('active');
+  document.getElementById('mode-dialecto').classList.remove('active');
+  document.getElementById('country-select-wrap').classList.add('hidden');
+  setDifficulty('facil');
   document.getElementById('room-code-input').value = '';
   showScreen('screen-home');
 }
