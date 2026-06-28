@@ -844,6 +844,10 @@ function enterLobby(code) {
     } else if (data.status === 'guessing') {
       showGuessingScreen(data);
     } else if (data.status === 'results') {
+      // El host es quien calcula los puntajes, sin importar quién haya confirmado la adivinanza
+      if (isHost && !data.scoresApplied) {
+        computeAndApplyScores();
+      }
       showResultsScreen(data);
     } else if (data.status === 'game-over') {
       showGameOverScreen(data);
@@ -1097,7 +1101,7 @@ function showGuessingScreen(data) {
       status: 'results',
       impostorGuess: guess
     });
-    await computeAndApplyScores();
+    // El cálculo de puntajes lo realiza el host automáticamente al detectar este cambio
   });
 
   // Si la sala llega aquí y el jugador actual NO es impostor, solo el host vigila que el impostor no se quede atascado;
