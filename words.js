@@ -3,7 +3,7 @@
 // facil   -> da bastante info, casi se nota la relación
 // medio   -> relación más indirecta
 // dificil -> pista muy alejada, casi una palabra "trampa"
- 
+
 // ---------- MODO GENERAL (neutro, sin modismos locales) ----------
 const WORD_BANK_GENERAL = [
   { palabra: "Playa", pistas: { facil: "Arena", medio: "Vacaciones", dificil: "Sombrilla" } },
@@ -35,7 +35,7 @@ const WORD_BANK_GENERAL = [
   { palabra: "Selfie", pistas: { facil: "Foto de uno mismo", medio: "Cámara frontal", dificil: "Filtro" } },
   { palabra: "Internet", pistas: { facil: "Conexión digital", medio: "WiFi", dificil: "Contraseña" } }
 ];
- 
+
 // ---------- MODO DIALECTO (palabras y modismos por país) ----------
 const WORD_BANKS = {
   argentina: [
@@ -261,7 +261,7 @@ const WORD_BANKS = {
     { palabra: "Zumbado", pistas: { facil: "Persona algo loca o atrevida", medio: "Hace cosas inesperadas", dificil: "Impulso" } }
   ]
 };
- 
+
 const COUNTRY_NAMES = {
   argentina: "Argentina",
   bolivia: "Bolivia",
@@ -284,7 +284,7 @@ const COUNTRY_NAMES = {
   uruguay: "Uruguay",
   venezuela: "Venezuela"
 };
- 
+
 const DIFFICULTY_NAMES = {
   facil: "Fácil",
   medio: "Medio",
