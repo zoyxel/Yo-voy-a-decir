@@ -224,6 +224,56 @@
     border-color: #ff4757;
     color: #fff;
   }
+  .timer-display {
+    text-align: center;
+    font-size: 48px;
+    font-weight: 800;
+    color: #ffd166;
+    margin-bottom: 8px;
+    font-family: monospace;
+  }
+  .timer-display.urgent {
+    color: #ff4757;
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .vote-option {
+    background: #1a1e3a;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .vote-option.selected {
+    border-color: #ff4757;
+    background: #2a1f3a;
+  }
+  .vote-count {
+    font-size: 12px;
+    color: #6a6e96;
+  }
+  .result-banner {
+    text-align: center;
+    padding: 16px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  .result-banner.win-impostor { background: #ff4757; color: #fff; }
+  .result-banner.win-normales { background: #2ecc71; color: #fff; }
+  .score-points {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2ecc71;
+  }
 </style>
 </head>
 <body>
@@ -285,6 +335,14 @@
           <button class="btn-ghost" id="impostor-plus">+</button>
         </div>
 
+        <label>Tiempo por ronda</label>
+        <div class="stepper">
+          <button class="btn-ghost" id="time-minus">−</button>
+          <span class="count" id="time-count">60</span>
+          <button class="btn-ghost" id="time-plus">+</button>
+        </div>
+        <p class="info-text" style="margin-top:-8px;font-size:12px;">segundos para hablar antes de votar</p>
+
         <button class="btn-primary" id="btn-start-game">Iniciar partida</button>
       </div>
 
@@ -295,6 +353,7 @@
 
     <!-- PANTALLA 3: ROL ASIGNADO -->
     <div id="screen-role" class="hidden">
+      <div class="timer-display" id="role-timer">--:--</div>
       <div class="role-card">
         <div id="role-tag" class="role-tag">CARGANDO...</div>
 
@@ -303,8 +362,46 @@
         </div>
       </div>
 
-      <button class="btn-secondary" id="btn-end-round">Terminar ronda</button>
       <p class="small-link" id="btn-leave-room-2">Salir de la sala</p>
+    </div>
+
+    <!-- PANTALLA 4: VOTACIÓN -->
+    <div id="screen-voting" class="hidden">
+      <h1 style="font-size:22px;">🗳️ ¿Quién es el impostor?</h1>
+      <p class="info-text">Vota por quien creas que es el impostor</p>
+
+      <ul class="player-list" id="voting-player-list"></ul>
+
+      <p class="info-text" id="vote-waiting-msg">Esperando que todos voten...</p>
+    </div>
+
+    <!-- PANTALLA 5: ADIVINANZA DEL IMPOSTOR -->
+    <div id="screen-impostor-guess" class="hidden">
+      <h1 style="font-size:22px;">🎭 Última oportunidad</h1>
+      <p class="info-text" id="impostor-guess-info">Intenta adivinar la palabra secreta</p>
+
+      <div id="impostor-guess-form">
+        <input type="text" id="impostor-guess-input" placeholder="Escribe la palabra...">
+        <button class="btn-primary" id="btn-submit-guess">Confirmar respuesta</button>
+      </div>
+
+      <p class="info-text" id="non-impostor-waiting-msg">El impostor está intentando adivinar la palabra...</p>
+    </div>
+
+    <!-- PANTALLA 6: RESULTADOS -->
+    <div id="screen-results" class="hidden">
+      <h1 style="font-size:22px;">📊 Resultados de la ronda</h1>
+
+      <div id="results-summary"></div>
+
+      <p class="word-label" style="margin-top:16px;">Tabla de puntajes</p>
+      <ul class="player-list" id="results-score-list"></ul>
+
+      <div id="host-next-round-btn" class="hidden">
+        <button class="btn-primary" id="btn-next-round">Jugar otra ronda</button>
+      </div>
+      <p class="info-text" id="waiting-host-next-msg">Esperando que el anfitrión inicie la siguiente ronda...</p>
+      <p class="small-link" id="btn-leave-room-3">Salir de la sala</p>
     </div>
 
   </div>
@@ -331,9 +428,12 @@ let myPlayerId = null;
 let myRoomCode = null;
 let isHost = false;
 let impostorCount = 1;
+let roundTimeSeconds = 60;
 let roomListenerRef = null;
 let selectedMode = 'general'; // 'general' o 'dialecto'
 let selectedDifficulty = 'facil'; // 'facil', 'medio' o 'dificil'
+let countdownInterval = null;
+let myVoteSelection = null;
 
 // ===================== UTILIDADES =====================
 function generateRoomCode() {
@@ -500,7 +600,14 @@ function enterLobby(code) {
 
     if (data.status === 'playing') {
       showMyRole(data);
+    } else if (data.status === 'voting') {
+      showVotingScreen(data);
+    } else if (data.status === 'guessing') {
+      showGuessingScreen(data);
+    } else if (data.status === 'results') {
+      showResultsScreen(data);
     } else if (data.status === 'lobby') {
+      if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
       showScreen('screen-lobby');
     }
   });
@@ -524,6 +631,15 @@ document.getElementById('impostor-plus').addEventListener('click', () => {
 document.getElementById('impostor-minus').addEventListener('click', () => {
   impostorCount = Math.max(impostorCount - 1, 1);
   document.getElementById('impostor-count').textContent = impostorCount;
+});
+
+document.getElementById('time-plus').addEventListener('click', () => {
+  roundTimeSeconds = Math.min(roundTimeSeconds + 15, 300);
+  document.getElementById('time-count').textContent = roundTimeSeconds;
+});
+document.getElementById('time-minus').addEventListener('click', () => {
+  roundTimeSeconds = Math.max(roundTimeSeconds - 15, 15);
+  document.getElementById('time-count').textContent = roundTimeSeconds;
 });
 
 // ===================== INICIAR PARTIDA (solo host) =====================
@@ -557,21 +673,35 @@ document.getElementById('btn-start-game').addEventListener('click', async () => 
     roles[pid] = impostorIds.includes(pid) ? 'impostor' : 'normal';
   });
 
+  // Inicializar puntajes en 0 si es la primera ronda (no sobreescribir si ya existen)
+  const scoresSnap = await db.ref('rooms/' + myRoomCode + '/scores').get();
+  let scores = scoresSnap.val() || {};
+  playerIds.forEach(pid => {
+    if (typeof scores[pid] !== 'number') scores[pid] = 0;
+  });
+
   await db.ref('rooms/' + myRoomCode).update({
     status: 'playing',
     mode: selectedMode,
     country: selectedMode === 'dialecto' ? country : null,
     difficulty: selectedDifficulty,
     impostorCount: impostorCount,
+    impostorIds: impostorIds,
+    roundTimeSeconds: roundTimeSeconds,
+    roundStartedAt: Date.now(),
     currentWord: wordEntry.palabra,
     currentClue: clueForDifficulty,
-    roles: roles
+    roles: roles,
+    scores: scores,
+    votes: null,
+    impostorGuess: null
   });
 });
 
 // ===================== MOSTRAR ROL =====================
 function showMyRole(data) {
   showScreen('screen-role');
+  myVoteSelection = null;
   const myRole = (data.roles || {})[myPlayerId];
   const tag = document.getElementById('role-tag');
   const content = document.getElementById('role-content');
@@ -601,19 +731,228 @@ function showMyRole(data) {
       <p class="info-text">Da pistas sin decir la palabra directamente.</p>
     `;
   }
+
+  // Timer countdown sincronizado por roundStartedAt + roundTimeSeconds
+  if (countdownInterval) clearInterval(countdownInterval);
+  const timerEl = document.getElementById('role-timer');
+  const totalMs = (data.roundTimeSeconds || 60) * 1000;
+  const endTime = (data.roundStartedAt || Date.now()) + totalMs;
+
+  function tick() {
+    const remainingMs = endTime - Date.now();
+    const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+    const mm = String(Math.floor(remainingSec / 60)).padStart(2, '0');
+    const ss = String(remainingSec % 60).padStart(2, '0');
+    timerEl.textContent = `${mm}:${ss}`;
+    timerEl.classList.toggle('urgent', remainingSec <= 10);
+
+    if (remainingMs <= 0) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      // Solo el host dispara el cambio de estado, para que todos lo reciban una sola vez
+      if (isHost) {
+        db.ref('rooms/' + myRoomCode).update({ status: 'voting' });
+      }
+    }
+  }
+  tick();
+  countdownInterval = setInterval(tick, 250);
 }
 
-// ===================== TERMINAR RONDA (volver al lobby) =====================
-document.getElementById('btn-end-round').addEventListener('click', async () => {
-  if (!isHost) {
-    alert('Solo el anfitrión puede terminar la ronda.');
-    return;
+// ===================== VOTACIÓN =====================
+function showVotingScreen(data) {
+  showScreen('screen-voting');
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+
+  const players = data.players || {};
+  const votes = data.votes || {};
+  const list = document.getElementById('voting-player-list');
+  list.innerHTML = '';
+
+  Object.entries(players).forEach(([pid, p]) => {
+    if (pid === myPlayerId) return; // no puede votarse a sí mismo
+    const div = document.createElement('div');
+    div.className = 'vote-option' + (myVoteSelection === pid ? ' selected' : '');
+    div.innerHTML = `<span>${p.name}</span>`;
+    div.addEventListener('click', async () => {
+      myVoteSelection = pid;
+      await db.ref('rooms/' + myRoomCode + '/votes/' + myPlayerId).set(pid);
+    });
+    list.appendChild(div);
+  });
+
+  const totalPlayers = Object.keys(players).length;
+  const totalVotes = Object.keys(votes).length;
+  document.getElementById('vote-waiting-msg').textContent =
+    `Votos recibidos: ${totalVotes}/${totalPlayers}`;
+
+  // Cuando todos votaron, el host avanza a la fase de adivinanza del impostor
+  if (isHost && totalVotes >= totalPlayers && totalPlayers > 0) {
+    advanceToGuessingPhase(data, votes);
   }
+}
+
+async function advanceToGuessingPhase(data, votes) {
+  // Calcular quién recibió más votos
+  const tally = {};
+  Object.values(votes).forEach(votedId => {
+    tally[votedId] = (tally[votedId] || 0) + 1;
+  });
+  let mostVotedId = null;
+  let maxVotes = -1;
+  Object.entries(tally).forEach(([pid, count]) => {
+    if (count > maxVotes) { maxVotes = count; mostVotedId = pid; }
+  });
+
+  const impostorIds = data.impostorIds || [];
+  const impostorWasCaught = impostorIds.includes(mostVotedId);
+
+  await db.ref('rooms/' + myRoomCode).update({
+    status: 'guessing',
+    mostVotedId: mostVotedId,
+    impostorWasCaught: impostorWasCaught
+  });
+}
+
+// ===================== ADIVINANZA DEL IMPOSTOR =====================
+function showGuessingScreen(data) {
+  showScreen('screen-impostor-guess');
+  const myRole = (data.roles || {})[myPlayerId];
+  const isImpostor = myRole === 'impostor';
+
+  document.getElementById('impostor-guess-form').classList.toggle('hidden', !isImpostor);
+  document.getElementById('non-impostor-waiting-msg').classList.toggle('hidden', isImpostor);
+
+  if (isImpostor) {
+    const caughtMsg = data.impostorWasCaught
+      ? 'Te descubrieron, pero aún puedes ganar si adivinas la palabra:'
+      : '¡No te descubrieron! Si adivinas la palabra, ganas de todas formas:';
+    document.getElementById('impostor-guess-info').textContent = caughtMsg;
+  }
+
+  // Solo se asigna un listener una vez (se remueve cualquier listener previo clonando el botón)
+  const btn = document.getElementById('btn-submit-guess');
+  const freshBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(freshBtn, btn);
+  freshBtn.addEventListener('click', async () => {
+    const guess = document.getElementById('impostor-guess-input').value.trim();
+    if (!guess) return;
+    await db.ref('rooms/' + myRoomCode).update({
+      status: 'results',
+      impostorGuess: guess
+    });
+    await computeAndApplyScores();
+  });
+
+  // Si la sala llega aquí y el jugador actual NO es impostor, solo el host vigila que el impostor no se quede atascado;
+  // no hay timer para esta fase ya que requiere acción manual del impostor.
+}
+
+// ===================== CÁLCULO Y APLICACIÓN DE PUNTAJES =====================
+async function computeAndApplyScores() {
+  if (!isHost) return; // solo el host calcula, para evitar carreras de escritura
+
+  const snap = await db.ref('rooms/' + myRoomCode).get();
+  const data = snap.val();
+  if (!data || data.scoresApplied) return; // evitar doble aplicación
+
+  const roles = data.roles || {};
+  const votes = data.votes || {};
+  const impostorIds = data.impostorIds || [];
+  const currentWord = (data.currentWord || '').trim().toLowerCase();
+  const guess = (data.impostorGuess || '').trim().toLowerCase();
+  const impostorGuessedRight = guess.length > 0 && guess === currentWord;
+
+  let scores = data.scores || {};
+  let pointsLog = {}; // para mostrar en el resumen quién ganó qué
+
+  if (impostorGuessedRight) {
+    // El impostor adivinó: gana puntos, anula el resultado de la votación
+    impostorIds.forEach(pid => {
+      scores[pid] = (scores[pid] || 0) + 2;
+      pointsLog[pid] = '+2 (adivinó la palabra)';
+    });
+  } else if (data.impostorWasCaught) {
+    // Fue descubierto: cada normal que votó correctamente gana puntos
+    Object.entries(votes).forEach(([voterId, votedId]) => {
+      if (impostorIds.includes(votedId) && !impostorIds.includes(voterId)) {
+        scores[voterId] = (scores[voterId] || 0) + 1;
+        pointsLog[voterId] = '+1 (descubrió al impostor)';
+      }
+    });
+  } else {
+    // No fue descubierto y no adivinó: el impostor gana puntos igual
+    impostorIds.forEach(pid => {
+      scores[pid] = (scores[pid] || 0) + 2;
+      pointsLog[pid] = '+2 (no fue descubierto)';
+    });
+  }
+
+  await db.ref('rooms/' + myRoomCode).update({
+    scores: scores,
+    pointsLog: pointsLog,
+    impostorGuessedRight: impostorGuessedRight,
+    scoresApplied: true
+  });
+}
+
+// ===================== RESULTADOS =====================
+function showResultsScreen(data) {
+  showScreen('screen-results');
+
+  const players = data.players || {};
+  const roles = data.roles || {};
+  const impostorIds = data.impostorIds || [];
+  const scores = data.scores || {};
+  const pointsLog = data.pointsLog || {};
+
+  const impostorNames = impostorIds.map(pid => (players[pid] || {}).name || '???').join(', ');
+
+  let bannerClass, bannerText;
+  if (data.impostorGuessedRight) {
+    bannerClass = 'win-impostor';
+    bannerText = `🎭 ¡${impostorNames} adivinó la palabra "${data.currentWord}"! Gana el impostor.`;
+  } else if (data.impostorWasCaught) {
+    bannerClass = 'win-normales';
+    bannerText = `✅ ¡Descubrieron a ${impostorNames}! Ganan los jugadores normales.`;
+  } else {
+    bannerClass = 'win-impostor';
+    bannerText = `🎭 No descubrieron a ${impostorNames}. Gana el impostor.`;
+  }
+
+  document.getElementById('results-summary').innerHTML = `
+    <div class="result-banner ${bannerClass}">${bannerText}</div>
+    <p class="info-text">La palabra era: <strong>${data.currentWord}</strong></p>
+  `;
+
+  // Tabla de puntajes ordenada de mayor a menor
+  const sortedPlayers = Object.entries(players).sort((a, b) => (scores[b[0]] || 0) - (scores[a[0]] || 0));
+  const list = document.getElementById('results-score-list');
+  list.innerHTML = '';
+  sortedPlayers.forEach(([pid, p]) => {
+    const li = document.createElement('li');
+    const gained = pointsLog[pid] ? `<span class="score-points">${pointsLog[pid]}</span>` : '';
+    li.innerHTML = `<span>${p.name}</span><span>${gained} &nbsp; <strong>${scores[pid] || 0} pts</strong></span>`;
+    list.appendChild(li);
+  });
+
+  document.getElementById('host-next-round-btn').classList.toggle('hidden', !isHost);
+  document.getElementById('waiting-host-next-msg').classList.toggle('hidden', isHost);
+}
+
+document.getElementById('btn-next-round').addEventListener('click', async () => {
   await db.ref('rooms/' + myRoomCode).update({
     status: 'lobby',
     currentWord: null,
     currentClue: null,
-    roles: null
+    roles: null,
+    votes: null,
+    impostorGuess: null,
+    impostorWasCaught: null,
+    mostVotedId: null,
+    impostorGuessedRight: null,
+    scoresApplied: null,
+    pointsLog: null
   });
 });
 
@@ -634,15 +973,20 @@ async function leaveRoom() {
 
 document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
 document.getElementById('btn-leave-room-2').addEventListener('click', leaveRoom);
+document.getElementById('btn-leave-room-3').addEventListener('click', leaveRoom);
 
 function goHome() {
   myPlayerId = null;
   myRoomCode = null;
   isHost = false;
   impostorCount = 1;
+  roundTimeSeconds = 60;
+  myVoteSelection = null;
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   selectedMode = 'general';
   selectedDifficulty = 'facil';
   document.getElementById('impostor-count').textContent = '1';
+  document.getElementById('time-count').textContent = '60';
   document.getElementById('mode-general').classList.add('active');
   document.getElementById('mode-dialecto').classList.remove('active');
   document.getElementById('country-select-wrap').classList.add('hidden');
