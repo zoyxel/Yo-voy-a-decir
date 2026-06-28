@@ -411,6 +411,77 @@
     font-weight: 700;
     color: var(--clear);
   }
+
+  /* ---------- Animación dramática: impostor adivinó la palabra ---------- */
+  .guess-correct-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 50%, rgba(255,59,59,0.35), rgba(8,9,15,0.96));
+    animation: fxFadeOut 2.2s ease forwards;
+    pointer-events: none;
+  }
+  .guess-correct-burst {
+    font-size: 88px;
+    animation: fxBurst 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 0 30px var(--alert-glow));
+  }
+  .guess-correct-text {
+    font-family: var(--font-display);
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: #fff;
+    margin-top: 14px;
+    text-shadow: 0 0 20px var(--alert-glow);
+    animation: fxTextIn 0.5s ease 0.2s backwards;
+  }
+  @keyframes fxBurst {
+    0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+    60% { transform: scale(1.3) rotate(8deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  @keyframes fxTextIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fxFadeOut {
+    0%, 70% { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; }
+  }
+
+  /* ---------- Tabla de puntajes mejorada ---------- */
+  .player-list li.leader {
+    border-color: var(--gold);
+    background: rgba(212,175,106,0.08);
+    box-shadow: 0 0 16px rgba(212,175,106,0.2);
+  }
+  .player-list li .rank-num {
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-right: 8px;
+  }
+  .player-list li.leader .rank-num { color: var(--gold); }
+
+  /* ---------- Pantalla de fin de partida ---------- */
+  .winner-crown {
+    text-align: center;
+    font-size: 56px;
+    margin-bottom: 4px;
+    animation: crownDrop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 0 24px rgba(212,175,106,0.5));
+  }
+  @keyframes crownDrop {
+    0% { transform: translateY(-40px) scale(0.5); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  #screen-game-over h1 {
+    color: var(--gold);
+  }
 </style>
 </head>
 <body>
@@ -480,6 +551,14 @@
         </div>
         <p class="info-text" style="margin-top:-8px;font-size:12px;">segundos para hablar antes de votar</p>
 
+        <label>Puntos para ganar la partida</label>
+        <div class="stepper">
+          <button class="btn-ghost" id="target-minus">−</button>
+          <span class="count" id="target-count">10</span>
+          <button class="btn-ghost" id="target-plus">+</button>
+        </div>
+        <p class="info-text" style="margin-top:-8px;font-size:12px;">la partida termina cuando alguien llega a esta cifra</p>
+
         <button class="btn-primary" id="btn-start-game">Iniciar partida</button>
       </div>
 
@@ -527,6 +606,11 @@
 
     <!-- PANTALLA 6: RESULTADOS -->
     <div id="screen-results" class="hidden">
+      <div id="guess-correct-fx" class="hidden guess-correct-fx">
+        <div class="guess-correct-burst">🎭</div>
+        <div class="guess-correct-text">PALABRA DESCUBIERTA</div>
+      </div>
+
       <h1 style="font-size:22px;">📊 Resultados de la ronda</h1>
 
       <div id="results-summary"></div>
@@ -539,6 +623,22 @@
       </div>
       <p class="info-text" id="waiting-host-next-msg">Esperando que el anfitrión inicie la siguiente ronda...</p>
       <p class="small-link" id="btn-leave-room-3">Salir de la sala</p>
+    </div>
+
+    <!-- PANTALLA 7: FIN DE PARTIDA -->
+    <div id="screen-game-over" class="hidden">
+      <div class="winner-crown">🏆</div>
+      <h1 style="font-size:24px;">Caso cerrado</h1>
+      <p class="info-text" id="game-over-winner-text">...</p>
+
+      <p class="word-label" style="margin-top:18px;">Tabla final</p>
+      <ul class="player-list" id="game-over-score-list"></ul>
+
+      <div id="host-new-game-btn" class="hidden">
+        <button class="btn-primary" id="btn-new-game">Nueva partida</button>
+      </div>
+      <p class="info-text" id="waiting-host-newgame-msg">Esperando que el anfitrión inicie una nueva partida...</p>
+      <p class="small-link" id="btn-leave-room-4">Salir de la sala</p>
     </div>
 
   </div>
@@ -566,11 +666,13 @@ let myRoomCode = null;
 let isHost = false;
 let impostorCount = 1;
 let roundTimeSeconds = 60;
+let targetScore = 10;
 let roomListenerRef = null;
 let selectedMode = 'general'; // 'general' o 'dialecto'
 let selectedDifficulty = 'facil'; // 'facil', 'medio' o 'dificil'
 let countdownInterval = null;
 let myVoteSelection = null;
+let gameOverTimeoutScheduled = false;
 
 // ===================== UTILIDADES =====================
 function generateRoomCode() {
@@ -743,6 +845,8 @@ function enterLobby(code) {
       showGuessingScreen(data);
     } else if (data.status === 'results') {
       showResultsScreen(data);
+    } else if (data.status === 'game-over') {
+      showGameOverScreen(data);
     } else if (data.status === 'lobby') {
       if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
       showScreen('screen-lobby');
@@ -777,6 +881,15 @@ document.getElementById('time-plus').addEventListener('click', () => {
 document.getElementById('time-minus').addEventListener('click', () => {
   roundTimeSeconds = Math.max(roundTimeSeconds - 15, 15);
   document.getElementById('time-count').textContent = roundTimeSeconds;
+});
+
+document.getElementById('target-plus').addEventListener('click', () => {
+  targetScore = Math.min(targetScore + 1, 50);
+  document.getElementById('target-count').textContent = targetScore;
+});
+document.getElementById('target-minus').addEventListener('click', () => {
+  targetScore = Math.max(targetScore - 1, 3);
+  document.getElementById('target-count').textContent = targetScore;
 });
 
 // ===================== INICIAR PARTIDA (solo host) =====================
@@ -817,6 +930,11 @@ document.getElementById('btn-start-game').addEventListener('click', async () => 
     if (typeof scores[pid] !== 'number') scores[pid] = 0;
   });
 
+  // El puntaje objetivo se fija solo una vez por partida (primera ronda)
+  const targetSnap = await db.ref('rooms/' + myRoomCode + '/targetScore').get();
+  const existingTarget = targetSnap.val();
+  const finalTargetScore = (typeof existingTarget === 'number') ? existingTarget : targetScore;
+
   await db.ref('rooms/' + myRoomCode).update({
     status: 'playing',
     mode: selectedMode,
@@ -825,6 +943,7 @@ document.getElementById('btn-start-game').addEventListener('click', async () => 
     impostorCount: impostorCount,
     impostorIds: impostorIds,
     roundTimeSeconds: roundTimeSeconds,
+    targetScore: finalTargetScore,
     roundStartedAt: Date.now(),
     currentWord: wordEntry.palabra,
     currentClue: clueForDifficulty,
@@ -1025,11 +1144,17 @@ async function computeAndApplyScores() {
     });
   }
 
+  // Revisar si alguien alcanzó el puntaje objetivo de la partida
+  const target = data.targetScore || 10;
+  const isGameOver = Object.values(scores).some(pts => pts >= target);
+
   await db.ref('rooms/' + myRoomCode).update({
+    status: 'results',
     scores: scores,
     pointsLog: pointsLog,
     impostorGuessedRight: impostorGuessedRight,
-    scoresApplied: true
+    scoresApplied: true,
+    isGameOver: isGameOver
   });
 }
 
@@ -1062,19 +1187,46 @@ function showResultsScreen(data) {
     <p class="info-text">La palabra era: <strong>${data.currentWord}</strong></p>
   `;
 
-  // Tabla de puntajes ordenada de mayor a menor
+  // Animación dramática solo cuando el impostor adivinó la palabra (una vez por ronda)
+  const fx = document.getElementById('guess-correct-fx');
+  if (data.impostorGuessedRight) {
+    fx.classList.remove('hidden');
+    // Reinicia la animación CSS por si se repite en otra ronda
+    fx.style.animation = 'none';
+    void fx.offsetWidth;
+    fx.style.animation = '';
+    setTimeout(() => fx.classList.add('hidden'), 2200);
+  } else {
+    fx.classList.add('hidden');
+  }
+
+  // Tabla de puntajes ordenada de mayor a menor, con marcador de líder
   const sortedPlayers = Object.entries(players).sort((a, b) => (scores[b[0]] || 0) - (scores[a[0]] || 0));
+  const topScore = sortedPlayers.length ? (scores[sortedPlayers[0][0]] || 0) : 0;
   const list = document.getElementById('results-score-list');
   list.innerHTML = '';
-  sortedPlayers.forEach(([pid, p]) => {
+  sortedPlayers.forEach(([pid, p], idx) => {
     const li = document.createElement('li');
+    const isLeader = (scores[pid] || 0) === topScore && topScore > 0;
+    li.className = isLeader ? 'leader' : '';
+    li.style.animationDelay = (idx * 0.05) + 's';
     const gained = pointsLog[pid] ? `<span class="score-points">${pointsLog[pid]}</span>` : '';
-    li.innerHTML = `<span>${p.name}</span><span>${gained} &nbsp; <strong>${scores[pid] || 0} pts</strong></span>`;
+    li.innerHTML = `<span><span class="rank-num">#${idx + 1}</span>${p.name}${isLeader ? ' 👑' : ''}</span><span>${gained} &nbsp; <strong>${scores[pid] || 0} pts</strong></span>`;
     list.appendChild(li);
   });
 
-  document.getElementById('host-next-round-btn').classList.toggle('hidden', !isHost);
-  document.getElementById('waiting-host-next-msg').classList.toggle('hidden', isHost);
+  const isGameOver = !!data.isGameOver;
+  document.getElementById('host-next-round-btn').classList.toggle('hidden', !isHost || isGameOver);
+  document.getElementById('waiting-host-next-msg').classList.toggle('hidden', isHost || isGameOver);
+
+  if (isGameOver && isHost && !gameOverTimeoutScheduled) {
+    gameOverTimeoutScheduled = true;
+    // El host avanza directo a la pantalla de fin de partida tras un breve momento para leer el resultado
+    setTimeout(() => {
+      gameOverTimeoutScheduled = false;
+      db.ref('rooms/' + myRoomCode).update({ status: 'game-over' });
+    }, 2600);
+  }
 }
 
 document.getElementById('btn-next-round').addEventListener('click', async () => {
@@ -1090,6 +1242,59 @@ document.getElementById('btn-next-round').addEventListener('click', async () => 
     impostorGuessedRight: null,
     scoresApplied: null,
     pointsLog: null
+  });
+});
+
+// ===================== FIN DE PARTIDA =====================
+function showGameOverScreen(data) {
+  showScreen('screen-game-over');
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+
+  const players = data.players || {};
+  const roles = data.roles || {};
+  const impostorIds = data.impostorIds || [];
+  const scores = data.scores || {};
+
+  const sortedPlayers = Object.entries(players).sort((a, b) => (scores[b[0]] || 0) - (scores[a[0]] || 0));
+  const topScore = sortedPlayers.length ? (scores[sortedPlayers[0][0]] || 0) : 0;
+  const winners = sortedPlayers.filter(([pid]) => (scores[pid] || 0) === topScore).map(([, p]) => p.name);
+
+  document.getElementById('game-over-winner-text').innerHTML =
+    `<strong style="color:var(--gold);font-family:var(--font-display);font-size:18px;letter-spacing:1px;">${winners.join(' y ')}</strong> ${winners.length > 1 ? 'ganan' : 'gana'} la partida con ${topScore} puntos`;
+
+  const list = document.getElementById('game-over-score-list');
+  list.innerHTML = '';
+  sortedPlayers.forEach(([pid, p], idx) => {
+    const li = document.createElement('li');
+    const isLeader = (scores[pid] || 0) === topScore;
+    li.className = isLeader ? 'leader' : '';
+    li.style.animationDelay = (idx * 0.08) + 's';
+    li.innerHTML = `<span><span class="rank-num">#${idx + 1}</span>${p.name}${isLeader ? ' 👑' : ''}</span><strong>${scores[pid] || 0} pts</strong>`;
+    list.appendChild(li);
+  });
+
+  document.getElementById('host-new-game-btn').classList.toggle('hidden', !isHost);
+  document.getElementById('waiting-host-newgame-msg').classList.toggle('hidden', isHost);
+}
+
+document.getElementById('btn-new-game').addEventListener('click', async () => {
+  gameOverTimeoutScheduled = false;
+  // Reinicia puntajes y vuelve al lobby para configurar una partida nueva
+  await db.ref('rooms/' + myRoomCode).update({
+    status: 'lobby',
+    scores: {},
+    targetScore: null,
+    currentWord: null,
+    currentClue: null,
+    roles: null,
+    votes: null,
+    impostorGuess: null,
+    impostorWasCaught: null,
+    mostVotedId: null,
+    impostorGuessedRight: null,
+    scoresApplied: null,
+    pointsLog: null,
+    isGameOver: null
   });
 });
 
@@ -1111,6 +1316,7 @@ async function leaveRoom() {
 document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
 document.getElementById('btn-leave-room-2').addEventListener('click', leaveRoom);
 document.getElementById('btn-leave-room-3').addEventListener('click', leaveRoom);
+document.getElementById('btn-leave-room-4').addEventListener('click', leaveRoom);
 
 function goHome() {
   myPlayerId = null;
@@ -1118,12 +1324,15 @@ function goHome() {
   isHost = false;
   impostorCount = 1;
   roundTimeSeconds = 60;
+  targetScore = 10;
   myVoteSelection = null;
+  gameOverTimeoutScheduled = false;
   if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   selectedMode = 'general';
   selectedDifficulty = 'facil';
   document.getElementById('impostor-count').textContent = '1';
   document.getElementById('time-count').textContent = '60';
+  document.getElementById('target-count').textContent = '10';
   document.getElementById('mode-general').classList.add('active');
   document.getElementById('mode-dialecto').classList.remove('active');
   document.getElementById('country-select-wrap').classList.add('hidden');
